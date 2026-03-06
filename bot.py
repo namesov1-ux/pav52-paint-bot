@@ -17,6 +17,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.enums import ParseMode
+from aiogram.client.default import DefaultBotProperties
 
 # ============================================================================
 # НАСТРОЙКА ЛОГИРОВАНИЯ
@@ -46,7 +47,7 @@ logger.info("✅ BOT_TOKEN успешно загружен")
 # ИНИЦИАЛИЗАЦИЯ БОТА
 # ============================================================================
 try:
-    bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
+    bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
     logger.info("✅ Бот и диспетчер инициализированы")
