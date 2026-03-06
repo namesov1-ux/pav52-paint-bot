@@ -494,6 +494,19 @@ async def on_startup():
     except AttributeError:
         logger.info("🤖 Версия aiogram: неизвестна (библиотека загружена)")
     
+ # Удаляем вебхук, если он есть
+    try:
+        logger.info("🔄 Проверка вебхука...")
+        webhook_info = await bot.get_webhook_info()
+        if webhook_info.url:
+            logger.info(f"⚠️ Обнаружен вебхук: {webhook_info.url}")
+            await bot.delete_webhook(drop_pending_updates=True)
+            logger.info("✅ Вебхук удален")
+        else:
+            logger.info("✅ Вебхуков нет")
+    except Exception as e:
+        logger.warning(f"⚠️ Ошибка при удалении вебхука: {e}")
+
     # Проверка соединения с Telegram API
     try:
         me = await bot.get_me()
