@@ -1,6 +1,6 @@
 """
 Telegram бот для подбора автоэмали
-Деплой на Railway — финальная версия с подробным логированием
+Деплой на Railway — финальная версия с уведомлениями админу
 """
 
 import asyncio
@@ -18,6 +18,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
+from datetime import datetime  # Добавлено для времени
 
 # ============================================================================
 # НАСТРОЙКА ЛОГИРОВАНИЯ
@@ -54,6 +55,80 @@ try:
 except Exception as e:
     logger.error(f"❌ Ошибка при инициализации бота: {e}")
     sys.exit(1)
+
+
+# ============================================================================
+# ID АДМИНИСТРАТОРА (ЗАМЕНИТЕ НА СВОЙ!)
+# ============================================================================
+ADMIN_CHAT_ID = 7623355921  # <--- ВСТАВЬТЕ СВОЙ TELEGRAM ID
+
+
+# ============================================================================
+# ФУНКЦИИ ДЛЯ ОТПРАВКИ УВЕДОМЛЕНИЙ
+# ============================================================================
+async def notify_admin(user_data: dict, user_info: dict):
+    """
+    Отправляет уведомление админу о новом заказе
+    """
+    try:
+        # Формируем красивое сообщение
+        message = (
+            f"🆕 <b>НОВЫЙ ЗАКАЗ!</b>\n"
+            f"{'═'*35}\n"
+            f"👤 <b>Информация о клиенте:</b>\n"
+            f"└ ID: <code>{user_info.get('id', 'Неизвестно')}</code>\n"
+            f"└ Username: @{user_info.get('username', 'Нет')}\n"
+            f"└ Имя: {user_info.get('first_name', '')} {user_info.get('last_name', '')}\n\n"
+            
+            f"📋 <b>Данные заказа:</b>\n"
+        )
+        
+        # Добавляем поля, которые есть в заказе
+        fields = [
+            ("👤 Имя клиента", user_data.get('user_name')),
+            ("📞 Телефон", user_data.get('phone')),
+            ("🚗 Марка", user_data.get('user_marka_mashiny')),
+            ("📅 Год", user_data.get('user_god_mashiny')),
+            ("🎨 Код краски", user_data.get('user_kod_kraski')),
+            ("⚖️ Количество", f"{user_data.get('user_kraska_gramm')} гр" if user_data.get('user_kraska_gramm') else None),
+            ("🎯 Приоритет", user_data.get('priority')),
+            ("🔢 VIN", user_data.get('user_vin')),
+            ("❓ Вопрос", user_data.get('user_questions')),
+        ]
+        
+        for label, value in fields:
+            if value:
+                message += f"├ {label}: <b>{value}</b>\n"
+        
+        message += f"{'═'*35}\n"
+        message += f"⏰ Время заказа: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+        
+        # Отправляем сообщение
+        await bot.send_message(
+            ADMIN_CHAT_ID,
+            message,
+            parse_mode=ParseMode.HTML
+        )
+        
+        logger.info(f"✅ Уведомление о заказе отправлено админу")
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка при отправке уведомления админу: {e}")
+
+
+async def notify_admin_startup():
+    """Отправляет уведомление о запуске бота"""
+    try:
+        await bot.send_message(
+            ADMIN_CHAT_ID,
+            f"✅ <b>Бот запущен!</b>\n\n"
+            f"⏰ Время: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
+            f"🖥 Платформа: Railway",
+            parse_mode=ParseMode.HTML
+        )
+        logger.info("✅ Уведомление о запуске отправлено админу")
+    except Exception as e:
+        logger.error(f"❌ Ошибка при отправке уведомления о запуске: {e}")
 
 
 # ============================================================================
@@ -173,7 +248,7 @@ def get_alternative_keyboard():
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
-    logger.info(f"Пользователь {message.from_user.id} запустил бота")
+    logger.info(f"Пользователь {message.from_user.id} (@{message.from_user.username}) запустил бота")
     
     await message.answer(
         "Здравствуйте, Вам необходима автоэмаль для покраски Вашего автомобиля.\n"
@@ -238,6 +313,18 @@ async def process_final_question(callback: types.CallbackQuery, state: FSMContex
         await callback.message.edit_text("Задайте Ваш вопрос")
         await state.set_state(OrderStates.waiting_final_question)
     else:
+        # Получаем данные перед очисткой
+        data = await state.get_data()
+        
+        # Отправляем уведомление админу
+        user_info = {
+            'id': callback.from_user.id,
+            'username': callback.from_user.username,
+            'first_name': callback.from_user.first_name,
+            'last_name': callback.from_user.last_name
+        }
+        await notify_admin(data, user_info)
+        
         await callback.message.edit_text(
             "Мы оперативно свяжемся с вами, чтобы ответить на все вопросы и подтвердить заказ.\n"
             "Перед изготовлением потребуется предоплата из расчета 200р за каждые заказанные 100гр краски "
@@ -439,6 +526,15 @@ async def process_final_question(message: types.Message, state: FSMContext):
     data = await state.get_data()
     user_name = data.get('user_name', '')
     
+    # Отправляем уведомление админу
+    user_info = {
+        'id': message.from_user.id,
+        'username': message.from_user.username,
+        'first_name': message.from_user.first_name,
+        'last_name': message.from_user.last_name
+    }
+    await notify_admin(data, user_info)
+    
     await message.answer(
         f"Спасибо за вопрос, {user_name}! Мы ответим вам в ближайшее время.\n\n"
         "Мы оперативно свяжемся с вами, чтобы ответить на все вопросы и подтвердить заказ.\n"
@@ -488,13 +584,13 @@ async def handle_unknown(message: types.Message):
 async def on_startup():
     """Действия при запуске бота"""
     logger.info("=" * 50)
-    logger.info("🚀 Бот успешно запущен на Railway!")
+    logger.info("🚀 Бот запускается...")
     try:
         logger.info(f"🤖 Версия aiogram: {aiogram.__version__}")
     except AttributeError:
-        logger.info("🤖 Версия aiogram: неизвестна (библиотека загружена)")
+        logger.info("🤖 Версия aiogram: неизвестна")
     
- # Удаляем вебхук, если он есть
+    # Удаляем вебхук, если он есть
     try:
         logger.info("🔄 Проверка вебхука...")
         webhook_info = await bot.get_webhook_info()
@@ -512,10 +608,15 @@ async def on_startup():
         me = await bot.get_me()
         logger.info(f"✅ Бот авторизован как: @{me.username} (ID: {me.id})")
         logger.info(f"📝 Имя бота: {me.full_name}")
+        
+        # Отправляем уведомление о запуске админу
+        await notify_admin_startup()
+        
     except Exception as e:
         logger.error(f"❌ Ошибка подключения к Telegram API: {e}")
     
     logger.info("=" * 50)
+    logger.info("🚀 Бот готов к работе!")
 
 
 async def on_shutdown():
