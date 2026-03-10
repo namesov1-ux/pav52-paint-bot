@@ -502,7 +502,7 @@ async def process_quantity(message: types.Message, state: FSMContext):
     if validate_quantity(quantity):
         await state.update_data(user_kraska_gramm=quantity)
         await message.answer(
-            "У нас имеется две стойки для подбора краски: HYMAX (500р/100гр) и CORSO (300р/100гр).\n"
+            "У нас имеется две стойки для подбора краски: HYMAX (500р/100гр) и CORSO (250р/100гр).\n"
             "На какой стойке получится лучший вариант, мы на данном этапе не сможем сказать.\n"
             "Уточните: приоритет будет по цене или по качеству?",
             reply_markup=get_priority_keyboard()
