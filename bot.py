@@ -18,7 +18,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
-from datetime import datetime  # Добавлено для времени
+from datetime import datetime
 
 # ============================================================================
 # НАСТРОЙКА ЛОГИРОВАНИЯ
@@ -33,16 +33,55 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ============================================================================
-# ПРОВЕРКА ТОКЕНА
+# ЗАГРУЗКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ
+# ============================================================================
+# Пытаемся загрузить .env файл для локальной разработки
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    logger.info("✅ Загружен .env файл для локальной разработки")
+except ImportError:
+    logger.info("⚠️ python-dotenv не установлен, используем системные переменные окружения")
+except Exception as e:
+    logger.warning(f"⚠️ Не удалось загрузить .env файл: {e}")
+
+# ============================================================================
+# ПРОВЕРКА ТОКЕНА БОТА
 # ============================================================================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 if not BOT_TOKEN:
     logger.error("❌ КРИТИЧЕСКАЯ ОШИБКА: BOT_TOKEN не найден в переменных окружения!")
-    logger.error("Добавьте BOT_TOKEN во вкладке Variables проекта Railway и перезапустите бота")
+    logger.error("Добавьте BOT_TOKEN во вкладке Variables проекта Railway")
+    logger.error("Или создайте файл .env с BOT_TOKEN=ваш_токен для локальной разработки")
     sys.exit(1)
 
 logger.info("✅ BOT_TOKEN успешно загружен")
+
+# ============================================================================
+# ПРОВЕРКА ID АДМИНИСТРАТОРА
+# ============================================================================
+try:
+    ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0"))
+    if ADMIN_CHAT_ID == 0:
+        logger.error("❌ КРИТИЧЕСКАЯ ОШИБКА: ADMIN_CHAT_ID не найден в переменных окружения!")
+        logger.error("Добавьте ADMIN_CHAT_ID с вашим Telegram ID")
+        logger.error("Пример: ADMIN_CHAT_ID=8114203375")
+        sys.exit(1)
+    logger.info(f"✅ ADMIN_CHAT_ID успешно загружен: {ADMIN_CHAT_ID}")
+except ValueError:
+    logger.error("❌ ОШИБКА: ADMIN_CHAT_ID должен быть числом (ваш Telegram ID)")
+    sys.exit(1)
+
+# ============================================================================
+# ДОПОЛНИТЕЛЬНЫЕ НАСТРОЙКИ (опционально)
+# ============================================================================
+# Можно вынести в переменные окружения и другие настройки
+BOT_MODE = os.getenv("BOT_MODE", "production")  # development или production
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+# Устанавливаем уровень логирования из переменной окружения
+logging.getLogger().setLevel(LOG_LEVEL)
 
 # ============================================================================
 # ИНИЦИАЛИЗАЦИЯ БОТА
@@ -55,13 +94,6 @@ try:
 except Exception as e:
     logger.error(f"❌ Ошибка при инициализации бота: {e}")
     sys.exit(1)
-
-
-# ============================================================================
-# ID АДМИНИСТРАТОРА (ЗАМЕНИТЕ НА СВОЙ!)
-# ============================================================================
-ADMIN_CHAT_ID = 8114203375  # <--- ВСТАВЬТЕ СВОЙ TELEGRAM ID
-
 
 # ============================================================================
 # ФУНКЦИИ ДЛЯ ОТПРАВКИ УВЕДОМЛЕНИЙ
@@ -115,21 +147,25 @@ async def notify_admin(user_data: dict, user_info: dict):
     except Exception as e:
         logger.error(f"❌ Ошибка при отправке уведомления админу: {e}")
 
-
 async def notify_admin_startup():
     """Отправляет уведомление о запуске бота"""
     try:
+        # Проверяем, что режим не development (чтобы не спамить при разработке)
+        if BOT_MODE == "development":
+            logger.info("🔧 Режим разработки: уведомление о запуске не отправляется")
+            return
+            
         await bot.send_message(
             ADMIN_CHAT_ID,
             f"✅ <b>Бот запущен!</b>\n\n"
             f"⏰ Время: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
-            f"🖥 Платформа: Railway",
+            f"🖥 Платформа: Railway\n"
+            f"⚙️ Режим: {BOT_MODE}",
             parse_mode=ParseMode.HTML
         )
         logger.info("✅ Уведомление о запуске отправлено админу")
     except Exception as e:
         logger.error(f"❌ Ошибка при отправке уведомления о запуске: {e}")
-
 
 # ============================================================================
 # КЛАССЫ СОСТОЯНИЙ FSM
@@ -148,7 +184,6 @@ class OrderStates(StatesGroup):
     waiting_vin = State()
     waiting_final_question = State()
 
-
 # ============================================================================
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 # ============================================================================
@@ -156,36 +191,29 @@ def validate_phone(phone: str) -> bool:
     pattern = r'^((\+7|7|8)+([0-9]){10})$'
     return bool(re.match(pattern, phone.strip()))
 
-
 def validate_name(name: str) -> bool:
     pattern = r'^[а-яА-ЯёЁa-zA-Z]+ [а-яА-ЯёЁa-zA-Z]+ ?[а-яА-ЯёЁa-zA-Z]+$'
     return bool(re.match(pattern, name.strip()))
-
 
 def validate_marka(marka: str) -> bool:
     pattern = r'^[a-zA-Zа-яА-ЯёЁ]+$'
     return bool(re.match(pattern, marka.strip()))
 
-
 def validate_year(year: str) -> bool:
     pattern = r'^[1-9]+[0-9]*$'
     return bool(re.match(pattern, year.strip()))
-
 
 def validate_kod(kod: str) -> bool:
     pattern = r'^[a-zA-Z0-9]+$'
     return bool(re.match(pattern, kod.strip()))
 
-
 def validate_quantity(quantity: str) -> bool:
     pattern = r'^(50|[1-9][0-9]*[05]0)$'
     return bool(re.match(pattern, quantity.strip()))
 
-
 def validate_vin(vin: str) -> bool:
     pattern = r'^[A-HJ-NPR-Z0-9]{17}$'
     return bool(re.match(pattern, vin.strip().upper()))
-
 
 # ============================================================================
 # СОЗДАНИЕ КЛАВИАТУР
@@ -200,7 +228,6 @@ def get_main_keyboard():
     )
     return keyboard
 
-
 def get_yes_no_keyboard():
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -209,7 +236,6 @@ def get_yes_no_keyboard():
         ]
     )
     return keyboard
-
 
 def get_priority_keyboard():
     keyboard = InlineKeyboardMarkup(
@@ -220,7 +246,6 @@ def get_priority_keyboard():
     )
     return keyboard
 
-
 def get_final_keyboard():
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -229,7 +254,6 @@ def get_final_keyboard():
         ]
     )
     return keyboard
-
 
 def get_alternative_keyboard():
     keyboard = InlineKeyboardMarkup(
@@ -240,7 +264,6 @@ def get_alternative_keyboard():
         ]
     )
     return keyboard
-
 
 # ============================================================================
 # ОБРАБОТЧИКИ КОМАНД
@@ -257,7 +280,6 @@ async def cmd_start(message: types.Message, state: FSMContext):
     )
     await state.set_state(OrderStates.know_code)
 
-
 @dp.message(Command("help"))
 async def cmd_help(message: types.Message):
     await message.answer(
@@ -270,7 +292,6 @@ async def cmd_help(message: types.Message):
         reply_markup=get_main_keyboard()
     )
 
-
 @dp.message(Command("contacts"))
 async def cmd_contacts(message: types.Message):
     await message.answer(
@@ -281,7 +302,6 @@ async def cmd_contacts(message: types.Message):
         "   Сб-Вс: 9:00 - 14:00\n\n"
         "Приносите образец краски для точного подбора!"
     )
-
 
 # ============================================================================
 # ОБРАБОТЧИКИ CALLBACK
@@ -303,7 +323,6 @@ async def process_know_code(callback: types.CallbackQuery, state: FSMContext):
             reply_markup=get_yes_no_keyboard()
         )
         await state.set_state(OrderStates.waiting_alternative)
-
 
 @dp.callback_query(lambda c: c.data in ["yes_question", "no_question"])
 async def process_final_question(callback: types.CallbackQuery, state: FSMContext):
@@ -331,7 +350,6 @@ async def process_final_question(callback: types.CallbackQuery, state: FSMContex
             "(если изготовление при Вас, предоплата не требуется)"
         )
         await state.clear()
-
 
 @dp.callback_query(lambda c: c.data in ["quality", "price"])
 async def process_priority(callback: types.CallbackQuery, state: FSMContext):
@@ -367,7 +385,6 @@ async def process_priority(callback: types.CallbackQuery, state: FSMContext):
     await state.set_data(data)
     await state.set_state(OrderStates.waiting_final_question)
 
-
 @dp.callback_query(lambda c: c.data in ["find_by_marka", "enter_vin", "visit_shop"])
 async def process_alternative(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -393,7 +410,6 @@ async def process_alternative(callback: types.CallbackQuery, state: FSMContext):
         )
         await state.clear()
 
-
 # ============================================================================
 # ОБРАБОТЧИКИ ТЕКСТОВЫХ СООБЩЕНИЙ
 # ============================================================================
@@ -416,7 +432,6 @@ async def process_name(message: types.Message, state: FSMContext):
             "Пожалуйста, укажите фамилию и имя в правильном формате (например: Иванов Алексей)"
         )
 
-
 @dp.message(OrderStates.waiting_phone)
 async def process_phone(message: types.Message, state: FSMContext):
     phone = message.text.strip()
@@ -432,7 +447,6 @@ async def process_phone(message: types.Message, state: FSMContext):
             "Пожалуйста, укажите российский телефон в формате: 8XXXXXXXXXX или +7XXXXXXXXXX"
         )
 
-
 @dp.message(OrderStates.waiting_phone, lambda message: message.contact)
 async def process_contact(message: types.Message, state: FSMContext):
     contact = message.contact
@@ -443,7 +457,6 @@ async def process_contact(message: types.Message, state: FSMContext):
         f"Спасибо! Теперь укажите марку машины (например: ЛАДА или GAC)"
     )
     await state.set_state(OrderStates.waiting_marka)
-
 
 @dp.message(OrderStates.waiting_marka)
 async def process_marka(message: types.Message, state: FSMContext):
@@ -456,7 +469,6 @@ async def process_marka(message: types.Message, state: FSMContext):
     else:
         await message.answer("Пожалуйста, укажите марку машины (только буквы, например: ЛАДА)")
 
-
 @dp.message(OrderStates.waiting_year)
 async def process_year(message: types.Message, state: FSMContext):
     year = message.text.strip()
@@ -467,7 +479,6 @@ async def process_year(message: types.Message, state: FSMContext):
         await state.set_state(OrderStates.waiting_kod)
     else:
         await message.answer("Пожалуйста, укажите год выпуска цифрами (например: 2020)")
-
 
 @dp.message(OrderStates.waiting_kod)
 async def process_kod(message: types.Message, state: FSMContext):
@@ -483,7 +494,6 @@ async def process_kod(message: types.Message, state: FSMContext):
         await message.answer(
             "Пожалуйста, введите код краски (только цифры и буквы латиницей, например: 123ABC)"
         )
-
 
 @dp.message(OrderStates.waiting_quantity)
 async def process_quantity(message: types.Message, state: FSMContext):
@@ -503,7 +513,6 @@ async def process_quantity(message: types.Message, state: FSMContext):
             "Пожалуйста, укажите количество краски, кратное 50 и не менее 50 (например: 100, 150, 200)"
         )
 
-
 @dp.message(OrderStates.waiting_vin)
 async def process_vin(message: types.Message, state: FSMContext):
     vin = message.text.strip().upper()
@@ -517,7 +526,6 @@ async def process_vin(message: types.Message, state: FSMContext):
             "Пожалуйста, введите корректный VIN-код:\n"
             "17 символов, цифры 0-9 и буквы A-Z (кроме I, O, Q)"
         )
-
 
 @dp.message(OrderStates.waiting_final_question)
 async def process_final_question(message: types.Message, state: FSMContext):
@@ -542,7 +550,6 @@ async def process_final_question(message: types.Message, state: FSMContext):
         "(если изготовление при Вас, предоплата не требуется)"
     )
     await state.clear()
-
 
 @dp.message(OrderStates.waiting_alternative)
 async def process_alternative_response(message: types.Message, state: FSMContext):
@@ -569,14 +576,12 @@ async def process_alternative_response(message: types.Message, state: FSMContext
             reply_markup=get_yes_no_keyboard()
         )
 
-
 @dp.message()
 async def handle_unknown(message: types.Message):
     await message.answer(
         "Я вас не понял. Пожалуйста, используйте команду /start для начала работы.",
         reply_markup=get_main_keyboard()
     )
-
 
 # ============================================================================
 # ЗАПУСК БОТА
@@ -618,11 +623,9 @@ async def on_startup():
     logger.info("=" * 50)
     logger.info("🚀 Бот готов к работе!")
 
-
 async def on_shutdown():
     """Действия при остановке бота"""
     logger.info("👋 Бот остановлен")
-
 
 async def main():
     """Главная функция запуска бота"""
@@ -643,7 +646,6 @@ async def main():
         raise
     finally:
         await on_shutdown()
-
 
 if __name__ == "__main__":
     try:
